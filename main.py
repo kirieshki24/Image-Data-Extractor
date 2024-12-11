@@ -2,11 +2,12 @@ import customtkinter as ctk
 from tkinter import ttk, filedialog
 from PIL import Image, TiffImagePlugin
 import os
+import threading
 
-class ImageExtracor(ctk.CTk):
+class ImageExtractor(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Image data Extractor")
+        self.title("Image Data Extractor")
         self.geometry("600x550")
         self.resizable(False, False)
 
@@ -17,21 +18,21 @@ class ImageExtracor(ctk.CTk):
                                  show="headings", height=20)
         self.tree.heading("ID", text="ID")
         self.tree.heading("Name", text="Name")
-        self.tree.heading("Size", text="Size")
+        self.tree.heading("Size", text="Size")          
         self.tree.heading("Resolution", text="Resolution")
         self.tree.heading("Color depth", text="Color depth")
-        self.tree.heading("Compression", text="Compression")
+        self.tree.heading("Compression", text="Compression rate")
 
         self.tree.column("ID", width=60)
         self.tree.column("Name", width=150)
         self.tree.column("Size", width=100)
         self.tree.column("Resolution", width=100)
         self.tree.column("Color depth", width=100)
-        self.tree.column("Compression", width=100)
+        self.tree.column("Compression", width=130)
 
         self.tree.pack(pady=20)
 
-        self.directory_button = ctk.CTkButton(self, text="Выбрать директорию", command=self.ask_directory_button)
+        self.directory_button = ctk.CTkButton(self, text="Выбрать директорию", command=self.start_directory_thread)
         self.directory_button.pack(pady=30)
 
         self.file_button = ctk.CTkButton(self, text="Выбрать файл", command=self.ask_file_button)
@@ -39,13 +40,18 @@ class ImageExtracor(ctk.CTk):
 
         self.counter = 1
 
+    def calculate_compression_ratio(self, file_size, resolution):
+        width, height = map(int, resolution.split('x'))
+        uncompressed_size = width * height * 3  
+        return max(round(((uncompressed_size - file_size) / uncompressed_size)*100), 0)
+        
     def add_data(self, files):
         for file in files:
             name = os.path.basename(file)
             size = os.path.getsize(file)
             with Image.open(file) as img:
                 width, height = img.size
-                size = str(width) + 'x' + str(height)
+                resolution = f"{width}x{height}"
                 dpi = img.info.get('dpi')
 
                 color_depth = {
@@ -62,27 +68,40 @@ class ImageExtracor(ctk.CTk):
                     'F': '32-bit'
                 }.get(img.mode, f"Unknown ({img.mode})")
                 compression = img.info.get('compression', 'No compression info')
+                if not name.lower().endswith(".gif"):
+                    compression = self.calculate_compression_ratio(size, resolution)
                 if isinstance(img, TiffImagePlugin.TiffImageFile):
                     compression = TiffImagePlugin.COMPRESSION_INFO.get(img.tag_v2.get(259), "No compression info")
-            self.tree.insert("", "end", values=(self.counter, name, size, f'{int(dpi[0])} x {int(dpi[1])}' if dpi else 'N/A', color_depth, compression))
+
+            self.tree.insert("", "end", values=(
+                self.counter, name, resolution, 
+                f'{int(dpi[0])} x {int(dpi[1])}' if dpi[0] else 'N/A', 
+                color_depth, compression
+            ))
             self.counter += 1
-        
+
+    def start_directory_thread(self):
+        thread = threading.Thread(target=self.ask_directory_button)
+        thread.start()
 
     def ask_directory_button(self):
         directory = filedialog.askdirectory()
-        files_temp = os.listdir(directory)
+        if not directory:
+            return
+
         files = []
-        for file in files_temp:
-            if (file.endswith(('.png', '.PNG')) or file.endswith(('.jpg', '.JPG')) or file.endswith(('.gif', '.GIF')) or 
-                file.endswith(('.tif', '.TIF')) or file.endswith(('.bmp', '.BMP')) or file.endswith(('.pcx', '.PCX'))):
-                files.append((os.path.join(directory, file)))
-        self.add_data(files)
-    
-    def ask_file_button(self):
-        files = []
-        files.append(filedialog.askopenfilename(filetypes=[("Images", "*.png;*.jpg;*.gif;*.tif;*.bmp;*.pcx")]))
+        for root, _, filenames in os.walk(directory):
+            for file in filenames:
+                if file.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".tif", ".bmp", ".pcx")):
+                    files.append(os.path.join(root, file))
+
         self.add_data(files)
 
+    def ask_file_button(self):
+        file = filedialog.askopenfilename(filetypes=[("Images", "*.png;*.jpg;*.jpeg;*.gif;*.tif;*.bmp;*.pcx")])
+        if file:
+            self.add_data([file])
+
 if __name__ == "__main__":
-    app = ImageExtracor()
+    app = ImageExtractor()
     app.mainloop()
