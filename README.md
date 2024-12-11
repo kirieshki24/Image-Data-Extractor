@@ -1,4 +1,4 @@
-#Image-Data-Extractor
+ #Image-Data-Extractor
 
  ## Запуск Python файла:
  1. Скачать и распаковать zip-архив с исходным кодом
